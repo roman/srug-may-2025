@@ -1,0 +1,7 @@
+[package]
+name = "capataz-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+capataz = { git = "https://github.com/capatazlib/rust-capataz" }
