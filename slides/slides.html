@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title></title>
+<meta name="author" content="Roman Gonzalez"/>
+<meta name="description" content=""/>
+<meta name="keywords" content=""/>
+<style type="text/css">
+.underline { text-decoration: underline; }
+</style>
+<link rel="stylesheet" href="file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/css/reveal.css"/>
+
+<link rel="stylesheet" href="file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/css/theme/moon.css" id="theme"/>
+
+
+<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+<script>
+    if( window.location.search.match( /print-pdf/gi ) ) {
+        var link = document.createElement( 'link' );
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = 'file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/css/print/pdf.css';
+        document.getElementsByTagName( 'head' )[0].appendChild( link );
+    }
+</script>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+<section id="sec-title-slide"><h2>Introduction to Supervision Trees<h2><h3>(in Rust)</h3><h4>Roman Gonzalez</h4>
+</section>
+<section>
+<section id="slide-org733af05">
+<h2 id="org733af05">Concurrency Is Hard</h2>
+<div class="outline-text-2" id="text-org733af05">
+</div>
+</section>
+<section id="slide-orgf689c4b">
+<h3 id="orgf689c4b">🧠 Cognitive Challenges</h3>
+<ul>
+<li>It is not easy to predict execution flow</li>
+<li>Functions don't reflect in which thread they are getting executed</li>
+<li>Many others&#x2026;</li>
+
+</ul>
+</section>
+<section id="slide-org25c272d">
+<h3 id="org25c272d">🛡️ Resiliency Challenges</h3>
+<div class="outline-text-3" id="text-org25c272d">
+</div>
+</section>
+<section id="slide-org184ab54">
+<h4 id="org184ab54">Exception in a Thread</h4>
+
+<div id="org94ea383" class="figure">
+<p><img src="diagram1.png" alt="diagram1.png" />
+</p>
+</div>
+</section>
+<section id="slide-org2fd5fa9">
+<h4 id="org2fd5fa9">Exception in a Thread</h4>
+
+<div id="org70feb47" class="figure">
+<p><img src="diagram2.png" alt="diagram2.png" />
+</p>
+</div>
+</section>
+<section id="slide-org1a96227">
+<h4 id="org1a96227">Corrupted State</h4>
+
+<div id="org625fd5d" class="figure">
+<p><img src="diagram5.png" alt="diagram5.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgcd1f585">
+<h4 id="orgcd1f585">Corrupted State</h4>
+
+<div id="orgca724c5" class="figure">
+<p><img src="diagram6.png" alt="diagram6.png" />
+</p>
+</div>
+</section>
+<section id="slide-org9593266">
+<h4 id="org9593266">Flaky Dependencies</h4>
+
+<div id="orgb86dd0a" class="figure">
+<p><img src="diagram3.png" alt="diagram3.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgb79caed">
+<h4 id="orgb79caed">Flaky Dependencies</h4>
+
+<div id="org899751c" class="figure">
+<p><img src="diagram4.png" alt="diagram4.png" />
+</p>
+</div>
+</section>
+<section id="slide-orga77185d">
+<h4 id="orga77185d">Flaky Dependencies</h4>
+
+<div id="org136c07b" class="figure">
+<p><img src="diagram7.png" alt="diagram7.png" />
+</p>
+</div>
+</section>
+<section id="slide-orga4b43dc">
+<h4 id="orga4b43dc">Should we catch em' all?</h4>
+
+<div id="orga51be47" class="figure">
+<p><img src="./no-bugs-bunny.png" alt="no-bugs-bunny.png" />
+</p>
+</div>
+</section>
+<section id="slide-org7571c5f">
+<h4 id="org7571c5f">Should we catch em' all?</h4>
+<ul>
+<li>Your system <b><i>will</i></b> fail in unexpected ways</li>
+<li>You may end up in a functional yet unhealthy state</li>
+<li><i>Let it crash</i> (the system) and <b>restart</b> instead</li>
+
+</ul>
+</section>
+</section>
+<section>
+<section id="slide-org873f5ac">
+<h2 id="org873f5ac">🌳 Supervision Trees</h2>
+<p>
+Idea influenced by <a href="https://www.erlang.org/doc/system/design_principles.html">Erlang</a> and it's OTP library (not first ones to mention it in literature
+though)
+</p>
+</section>
+<section id="slide-orgbb84936">
+<h3 id="orgbb84936">Basics</h3>
+<div class="outline-text-3" id="text-orgbb84936">
+</div>
+</section>
+<section id="slide-org1bebd8d">
+<h4 id="org1bebd8d">Supervisor Component</h4>
+
+<div id="org4659aec" class="figure">
+<p><img src="diagram8.png" alt="diagram8.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgbbb1992">
+<h4 id="orgbbb1992">Supervisor Component</h4>
+
+<div id="org9355a84" class="figure">
+<p><img src="diagram9.png" alt="diagram9.png" />
+</p>
+</div>
+</section>
+<section id="slide-orga9d5316">
+<h3 id="orga9d5316">Restart Policies</h3>
+<ul>
+<li><b>Permanent</b> – always restart the dead thread, even if it finished without errors</li>
+<li><b>Transient</b> – restart the dead thread only if it failed, do not restart it if the
+termination was clean</li>
+<li><b>Temporary</b> – same behavior as not having the supervisor</li>
+
+</ul>
+</section>
+<section id="slide-org1b4adf0">
+<h3 id="org1b4adf0">Supervisor Restart Strategy</h3>
+<div class="outline-text-3" id="text-org1b4adf0">
+</div>
+</section>
+<section id="slide-orgd475884">
+<h4 id="orgd475884">Error Scenario</h4>
+
+<div id="org4edebc6" class="figure">
+<p><img src="diagram12.png" alt="diagram12.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgec8d4df">
+<h4 id="orgec8d4df">One For One</h4>
+
+<div id="org5cd595a" class="figure">
+<p><img src="./diagram9.png" alt="diagram9.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgea57c46">
+<h4 id="orgea57c46">One For All</h4>
+
+<div id="orgb094e01" class="figure">
+<p><img src="diagram10.png" alt="diagram10.png" />
+</p>
+</div>
+</section>
+<section id="slide-org12f396f">
+<h4 id="org12f396f">One For All</h4>
+
+<div id="orga71a1c2" class="figure">
+<p><img src="diagram11.png" alt="diagram11.png" />
+</p>
+</div>
+</section>
+<section id="slide-org938865c">
+<h4 id="org938865c">One For All Restart Strategies</h4>
+<ul>
+<li>Left to Right – stop nodes from right to left and start nodes from left to right</li>
+<li>Right to Left – the opposite of Left To Right</li>
+
+</ul>
+</section>
+<section id="slide-orga49d16c">
+<h3 id="orga49d16c">On-Demand Termination</h3>
+<ul>
+<li>Does the supervisor <i>kill</i> threads on <code>OneForAll</code> restart strategies? NO. We use the <code>Context</code> API.</li>
+<li>Inspired by golang's <code>context.Context</code> type</li>
+
+</ul>
+</section>
+<section id="slide-org2800561">
+<h4 id="org2800561">Context Example</h4>
+<div class="org-src-container">
+
+<pre  class="src src-rust"   ><code trim><span style="color: #26a6a6;">async</span> <span style="color: #26a6a6;">fn</span> <span style="color: #bcd42a;">my_task</span><span style="color: #51afef;">(</span>
+    <span style="color: #f8f8f0;">ctx</span>: <span style="color: #f8f8f0;">Context</span>,
+    <span style="color: #f8f8f0;">recv_chan</span>: <span style="color: #f8f8f0;">Receiver</span><span style="color: #c678dd;">&lt;</span><span style="color: #f8f8f0;">Request</span><span style="color: #c678dd;">&gt;</span>,
+<span style="color: #51afef;">)</span> -&gt; <span style="color: #f8f8f0;">Result</span><span style="color: #51afef;">&lt;</span><span style="color: #c678dd;">()</span>, <span style="color: #ff5d38;">anyhow</span>::<span style="color: #f8f8f0;">Error</span><span style="color: #51afef;">&gt;</span> <span style="color: #51afef;">{</span>
+  <span style="color: #26a6a6;">let</span> <span style="color: #f8f8f0;">db</span> = <span style="color: #ff5d38;">database</span>::<span style="color: #f8f8f0;">New</span><span style="color: #c678dd;">()</span>
+  <span style="color: #26a6a6;">loop</span> <span style="color: #c678dd;">{</span>
+     <span style="color: #ff5d38;">tokio</span>::<span style="color: #ff5d38; font-weight: bold;">select!</span> <span style="color: #98be65;">{</span>
+         _ = ctx.done<span style="color: #a9a1e1;">()</span> =&gt; <span style="color: #a9a1e1;">{</span>
+             <span style="color: #5B6268;">// </span><span style="color: #5B6268;">^^^^^^</span>
+             db.close<span style="color: #26a6a6;">()</span>.map_err<span style="color: #26a6a6;">(</span><span style="color: #ff5d38;">anyhow</span>::<span style="color: #f8f8f0;">Error</span>::new<span style="color: #26a6a6;">)</span>
+             <span style="color: #5B6268;">// </span><span style="color: #5B6268;">De-Allocate or close resources after termination is signaled.</span>
+         <span style="color: #a9a1e1;">}</span>,
+         _ = recv_chan.recv<span style="color: #a9a1e1;">()</span> =&gt; <span style="color: #a9a1e1;">{</span>
+             <span style="color: #5B6268;">// </span><span style="color: #5B6268;">... Business logic here.</span>
+         <span style="color: #a9a1e1;">}</span>
+     <span style="color: #98be65;">}</span>
+  <span style="color: #c678dd;">}</span>
+<span style="color: #51afef;">}</span>
+</code></pre>
+</div>
+</section>
+<section id="slide-org51023bc">
+<h4 id="org51023bc">Kill Unresponsive Threads</h4>
+<p>
+If a <code>context.done()</code> signal doesn't get respected after some grace period, execute task
+kill.
+</p>
+</section>
+<section id="slide-org499cf73">
+<h3 id="org499cf73">Too Many Errors!</h3>
+<p>
+Should we keep restarting if failures occur? NO. Have a tolerance window (e.g. 1 error every
+5 seconds), if surpassed, <i>let it crash!</i>
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org82078dd">
+<h2 id="org82078dd">🧠 Big Brain Concepts</h2>
+<p>
+Let the API supervise supervisors
+</p>
+</section>
+<section id="slide-orgaffb43c">
+<h3 id="orgaffb43c">Who Supervises the Supervisor?</h3>
+
+<div id="org25bece7" class="figure">
+<p><img src="diagram13.png" alt="diagram13.png" />
+</p>
+</div>
+</section>
+<section id="slide-orgcfd0c88">
+<h3 id="orgcfd0c88">Bulkheads</h3>
+
+<div id="org71d8b7d" class="figure">
+<p><img src="./bulkheads.png" alt="bulkheads.png" />
+</p>
+</div>
+</section>
+<section id="slide-orga6f98df">
+<h4 id="orga6f98df">Bulkheads in Action</h4>
+
+<div id="org59b5eef" class="figure">
+<p><img src="diagram14.png" alt="diagram14.png" />
+</p>
+</div>
+</section>
+</section>
+<section>
+<section id="slide-org9dfd87c">
+<h2 id="org9dfd87c">Is This an Actor?</h2>
+
+<div id="org7427907" class="figure">
+<p><img src="./isthis.jpg" alt="isthis.jpg" />
+</p>
+</div>
+</section>
+<section id="slide-orgaf6825c">
+<h3 id="orgaf6825c">Differences</h3>
+<ul>
+<li>No complecting implicit queues to threads! Use
+<ul>
+<li>mutexes</li>
+<li>SQS/Kafka</li>
+<li><code>mpsc</code></li>
+<li>etc.</li>
+
+</ul></li>
+<li>As long as you work with <code>Context</code>, run <code>tokio</code> futures</li>
+
+</ul>
+</section>
+</section>
+<section>
+<section id="slide-org4d6d9b8">
+<h2 id="org4d6d9b8">DEMO</h2>
+</section>
+</section>
+<section>
+<section id="slide-orgc09f734">
+<h2 id="orgc09f734">Thanks</h2>
+<p>
+<a href="https://github.com/capatazlib/rust-capataz">https://github.com/capatazlib/rust-capataz</a>
+</p>
+</section>
+</section>
+</div>
+</div>
+<script src="/nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/js/reveal.js"></script>
+
+<script>
+// Full list of configuration options available here:
+// https://github.com/hakimel/reveal.js#configuration
+Reveal.initialize({
+slideNumber:true,
+
+// Optional libraries used to extend on reveal.js
+dependencies: [
+ { src: 'file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+ { src: 'file:///nix/store/l9qrxcc5dky833mx6c7wnp3l1m56ln73-revealjs/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }]
+
+});
+
+</script>
+</body>
+</html>

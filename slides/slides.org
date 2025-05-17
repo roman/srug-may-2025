@@ -1,0 +1,396 @@
+#+REVEAL_INIT_OPTIONS: slideNumber:true
+#+REVEAL_HLEVEL: 1
+#+OPTIONS: num:nil toc:nil reval_progress:t
+#+REVEAL_TITLE_SLIDE: <h2>Introduction to Supervision Trees<h2><h3>(in Rust)</h3><h4>Roman Gonzalez</h4>
+* Concurrency Is Hard
+** 🧠 Cognitive Challenges
++ It is not easy to predict execution flow
++ Functions don't reflect in which thread they are getting executed
++ Many others...
+** 🛡️ Resiliency Challenges
+*** Exception in a Thread
+#+begin_src plantuml :file diagram1.png :export result
+  @startuml
+  skinparam componentStyle rectangle
+  scale 1024 width
+  scale 768 height
+  left to right direction
+  component App {
+    component T1
+    component T2 
+    component T3
+  }
+  T1 --[hidden]> T2
+  T2 --[hidden]> T3
+  @enduml
+#+end_src
+*** Exception in a Thread
+#+begin_src plantuml :file diagram2.png :export result
+  @startuml
+  skinparam componentStyle rectangle
+  scale 1024 width
+  scale 768 height
+  component App {
+    component T1
+    component T2 
+    component "<:skull:>" as T3
+  }
+  T1 -right[hidden]-> T2 
+  T2 -right[hidden]-> T3
+  @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram2.png]]
+
+*** Corrupted State 
+
+#+begin_src plantuml :file diagram5.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component T1
+     component T2 
+     component "<:dizzy_face:>" as T3
+   }
+   T1 -right[hidden]-> T2 
+   T2 -right[hidden]-> T3
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram5.png]]
+
+*** Corrupted State 
+
+#+begin_src plantuml :file diagram6.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component "<:dizzy_face:>" as App {
+     component "<:dizzy_face:>" as T1
+     component "<:dizzy_face:>" as T2 
+     component "<:dizzy_face:>" as T3
+   }
+   T1 -right[hidden]-> T2 
+   T2 -right[hidden]-> T3
+   @enduml
+#+end_src
+#+RESULTS:
+[[file:diagram6.png]]
+*** Flaky Dependencies
+#+begin_src plantuml :file diagram3.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component T1
+     component T2 
+     component T3
+   }
+   component DepX
+   T1 -right[hidden]-> T2 
+   T2 -right[hidden]-> T3
+   T3 -right-> DepX
+   @enduml
+#+end_src
+
+*** Flaky Dependencies
+#+begin_src plantuml :file diagram4.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component T1
+     component T2 
+     component "<:skull:>" as T3
+   }
+   component "<:skull:>" as DepX
+   T1 -right[hidden]-> T2 
+   T2 -right[hidden]-> T3
+   T3 -right-> DepX
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram4.png]]
+
+*** Flaky Dependencies
+#+begin_src plantuml :file diagram7.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component "App <:sleeping:>" as App {
+     component T1
+     component T2 
+     component "<:skull:>" as T3
+   }
+   component "<:smiley:>" as DepX
+   T1 -right[hidden]-> T2 
+   T2 -right[hidden]-> T3
+   T3 -right[hidden]-> DepX
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram7.png]]
+
+*** Should we catch em' all?
+[[./no-bugs-bunny.png]]
+*** Should we catch em' all?
++ Your system */will/* fail in unexpected ways
++ You may end up in a functional yet unhealthy state
++ /Let it crash/ (the system) and *restart* instead
+* 🌳 Supervision Trees
+Idea influenced by [[https://www.erlang.org/doc/system/design_principles.html][Erlang]] and it's OTP library (not first ones to mention it in literature
+though)
+** Basics
+*** Supervisor Component
+#+begin_src plantuml :file diagram8.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component S1 
+     component T1
+     component T2 
+     component T3
+   }
+   S1 -down-> T1 : <:eyes:>
+   S1 -down-> T2 : <:eyes:>
+   S1 -down-> T3 : <:eyes:>
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram8.png]]
+
+*** Supervisor Component
+#+begin_src plantuml :file diagram9.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component S1 #pink
+     component T1
+     component T2 
+     component "<:skull:>" as T3
+     component "T3'" as T3Prime
+   }
+   S1 -down-> T1 : <:eyes:>
+   S1 -down-> T2 : <:eyes:>
+   S1 -down[#red]-> T3 : <:eyes:>
+   S1 -down[#green]-> T3Prime : <:eyes:> 
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram9.png]]
+
+** Restart Policies
++ *Permanent* – always restart the dead thread, even if it finished without errors
++ *Transient* – restart the dead thread only if it failed, do not restart it if the
+  termination was clean
++ *Temporary* – same behavior as not having the supervisor
+** Supervisor Restart Strategy
+*** Error Scenario
+#+begin_src plantuml :file diagram12.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component S1 #pink
+     component T1
+     component T2 
+     component "<:skull:>" as T3
+   }
+   S1 -down-> T1 : <:eyes:>
+   S1 -down-> T2 : <:eyes:>
+   S1 -down[#red]-> T3 
+   @enduml
+#+end_src
+*** One For One
+[[./diagram9.png]]
+*** One For All
+#+begin_src plantuml :file diagram10.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component S1 #pink
+     component T1
+     component T2 
+     component "<:skull:>" as T3
+   }
+   S1 -down-> T1 : <:hand:>
+   S1 -down-> T2 : <:hand:>
+   S1 -down[#red]-> T3 
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram10.png]]
+
+*** One For All
+#+begin_src plantuml :file diagram11.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component S1 #pink
+     component "<:skull:>" as T1
+     component "T1'" as T1Prime
+     component "<:skull:>" as T2
+     component "T2'" as T2Prime
+     component "<:skull:>" as T3
+     component "T3'" as T3Prime
+   }
+   S1 -down[#red]-> T1  : <:eyes:>
+   S1 -down[#green]-> T1Prime : <:eyes:>
+   S1 -down[#red]-> T2  : <:eyes:>
+   S1 -down[#green]-> T2Prime : <:eyes:>
+   S1 -down[#red]-> T3 : <:eyes:>
+   S1 -down[#green]-> T3Prime : <:eyes:> 
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram11.png]]
+
+*** One For All Restart Strategies
++ Left to Right – stop nodes from right to left and start nodes from left to right
++ Right to Left – the opposite of Left To Right
+** On-Demand Termination 
++ Does the supervisor /kill/ threads on =OneForAll= restart strategies? NO. We use the =Context= API.
++ Inspired by golang's =context.Context= type
+*** Context Example
+#+begin_src rust
+  async fn my_task(
+      ctx: Context,
+      recv_chan: Receiver<Request>,
+  ) -> Result<(), anyhow::Error> {
+    let db = database::New()
+    loop {
+       tokio::select! {
+  	 _ = ctx.done() => {
+  	     // ^^^^^^
+  	     db.close().map_err(anyhow::Error::new)
+  	     // De-Allocate or close resources after termination is signaled.
+  	 },
+  	 _ = recv_chan.recv() => {
+  	     // ... Business logic here.
+  	 }
+       }
+    }
+  }
+#+end_src
+
+*** Kill Unresponsive Threads
+If a =context.done()= signal doesn't get respected after some grace period, execute task
+kill.
+
+** Too Many Errors!
+Should we keep restarting if failures occur? NO. Have a tolerance window (e.g. 1 error every
+5 seconds), if surpassed, /let it crash!/
+* 🧠 Big Brain Concepts
+Let the API supervise supervisors
+** Who Supervises the Supervisor?
+#+begin_src plantuml :file diagram13.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component Root 
+     component "HTTP Server" as SubSystem1
+     component "Kafka Consumer" as SubSystem2
+     component T1
+     component T2 
+     component T3
+     component T4
+     component T5
+   }
+   Root -down-> SubSystem1 : <:eyes:>
+   Root -down-> SubSystem2 : <:eyes:>
+
+   SubSystem1 -down-> T1 : <:eyes:>
+   SubSystem1 -down-> T2 : <:eyes:>
+   SubSystem1 -down-> T3 : <:eyes:>
+
+   SubSystem2 -down-> T4 : <:eyes:>
+   SubSystem2 -down-> T5 : <:eyes:>
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram13.png]]
+
+** Bulkheads
+[[./bulkheads.png]]
+
+*** Bulkheads in Action
+
+#+begin_src plantuml :file diagram14.png :export result
+  @startuml
+   skinparam componentStyle rectangle
+   scale 500 width
+   scale 500 height
+   component App {
+     component Root 
+     component "HTTP Server" as SubSystem1
+     component "Flaky Consumer" as SubSystem2
+     note right
+       max 20 errors in 5 second window
+     end note
+     component T1
+     component T2 
+     component T3
+     component T4
+     component T5
+   }
+   component "Flaky Service" as FlakyService
+   Root -down-> SubSystem1 : <:eyes:>
+   Root -down-> SubSystem2 : <:eyes:> 
+
+   SubSystem1 -down-> T1 : <:eyes:>
+   SubSystem1 -down-> T2 : <:eyes:>
+   SubSystem1 -down-> T3 : <:eyes:>
+
+   SubSystem2 -down-> T4 : <:eyes:>
+   SubSystem2 -down-> T5 : <:eyes:>
+
+   SubSystem1 -right[hidden]-> SubSystem2
+
+   T4 -> FlakyService
+   @enduml
+#+end_src
+
+#+RESULTS:
+[[file:diagram14.png]]
+
+* Is This an Actor?
+
+[[./isthis.jpg]]
+
+** Differences
++ No complecting implicit queues to threads! Use
+  - mutexes
+  - SQS/Kafka
+  - =mpsc=
+  - etc.
++ As long as you work with =Context=, run =tokio= futures
+  
+* DEMO
+* Thanks
+https://github.com/capatazlib/rust-capataz
