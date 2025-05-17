@@ -4,4 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { version = "1.0.98" }
 capataz = { git = "https://github.com/capatazlib/rust-capataz" }
+tokio = { version = "1.43.0", features = ["macros", "rt", "rt-multi-thread", "test-util", "time", "signal"] }
+notify = { version = "8.0.0" }
