@@ -32,11 +32,4 @@
       perSystem = {pkgs, ...}: {
       };
     };
-    # nixDir.lib.buildFlake {
-    #   inherit inputs;
-    #   root = ./.;
-    #   systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
-    #   generateAllPackage = true;
-    #   injectPreCommit = true;
-    # };
 }
